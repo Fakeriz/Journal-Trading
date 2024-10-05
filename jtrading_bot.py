@@ -101,8 +101,8 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-        dp.add_handler(conv_handler)
-        dp.add_handler(CommandHandler('start', start))
+    dp.add_handler(conv_handler)
+    dp.add_handler(CommandHandler('start', start))
 
     # Mulai bot
     updater.start_polling()
