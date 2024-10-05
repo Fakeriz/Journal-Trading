@@ -257,6 +257,13 @@ def main() -> None:
     )
 
 #
+def pair(update: Update, context: CallbackContext) -> int:
+    context.user_data['pair'] = update.message.text
+    reply_keyboard = [['Long', 'Short']]
+    update.message.reply_text('Is this a Long or Short position?',
+                              reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+    return POSITION
+
 def position(update, context):
     user_choice = update.message.text
     if user_choice == "Long":
@@ -265,6 +272,43 @@ def position(update, context):
         update.message.reply_text("Anda memilih posisi Short. Silakan masukkan data trade.")
     else:
         update.message.reply_text("Posisi tidak valid. Harap pilih antara Long atau Short.")
+
+def save_trade(context: CallbackContext):
+    conn = sqlite3.connect('trading_journal.db')
+    c = conn.cursor()
+    c.execute('''INSERT INTO trades (pair, position, entry_price, take_profit, stop_loss, 
+                 risk_reward, risk_amount, lot_size, date_time, session, analysis)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+              (context.user_data['pair'], context.user_data['position'], context.user_data['entry_price'],
+               context.user_data['take_profit'], context.user_data['stop_loss'], context.user_data['risk_reward'],
+               context.user_data['risk_amount'], context.user_data['lot_size'], context.user_data['date_time'],
+               context.user_data['session'], context.user_data['analysis']))
+    conn.commit()
+    conn.close()
+def analysis(update: Update, context: CallbackContext) -> int:
+    context.user_data['analysis'] = update.message.text
+    save_trade(context)
+    
+    summary = f"Trade logged successfully!\n\n" \
+              f"Pair: {context.user_data['pair']}\n" \
+              f"Position: {context.user_data['position']}\n" \
+              f"Entry Price: {context.user_data['entry_price']}\n" \
+              f"Take Profit: {context.user_data['take_profit']}\n" \
+              f"Stop Loss: {context.user_data['stop_loss']}\n" \
+              f"Risk/Reward: {context.user_data['risk_reward']}\n" \
+              f"Risk Amount: ${context.user_data['risk_amount']}\n" \
+              f"Lot Size: {context.user_data['lot_size']}\n" \
+              f"Date/Time: {context.user_data['date_time']}\n" \
+              f"Session: {context.user_data['session']}\n" \
+              f"Analysis: {context.user_data['analysis']}"
+    
+    update.message.reply_text(summary)
+    context.user_data.clear()
+    return ConversationHandler.END
+def cancel(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text('Trade logging cancelled.', reply_markup=ReplyKeyboardRemove())
+    context.user_data.clear()
+    return ConversationHandler.END
 
     dp.add_handler(MessageHandler(Filters.regex("^(Long|Short)$"), position))
 #
