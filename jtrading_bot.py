@@ -223,7 +223,7 @@ def advanced_report(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(report_text)
 
 def main() -> None:
-    updater = Updater("YOUR_BOT_TOKEN")
+    updater = Updater("7152456723:AAFBncqooKGVI8XUb2XarTvecOEDVX_yWtU")
 
     dp = updater.dispatcher
 
