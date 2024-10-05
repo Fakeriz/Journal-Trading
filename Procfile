@@ -1,1 +1,1 @@
-worker: jtrading_bot.py
+worker: python jtrading_bot.py
