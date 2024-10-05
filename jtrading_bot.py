@@ -139,7 +139,7 @@ def report(update: Update, context: CallbackContext) -> None:
 def main() -> None:
     """Run the bot."""
     # Replace 'YOUR_BOT_TOKEN' with your actual bot token
-    updater = Updater("YOUR_BOT_TOKEN")
+    updater = Updater("7152456723:AAFBncqooKGVI8XUb2XarTvecOEDVX_yWtU")
 
     dp = updater.dispatcher
 
