@@ -53,7 +53,7 @@ def stop_loss(update: Update, context: CallbackContext) -> int:
 
 def risk_reward(update: Update, context: CallbackContext) -> int:
     context.user_data['risk_reward'] = float(update.message.text)
-    update.message.reply_text('How much are you risking? (in $)')
+    update.message.reply_text('How much are you risking?')
     return RISK_AMOUNT
 
 def risk_amount(update: Update, context: CallbackContext) -> int:
