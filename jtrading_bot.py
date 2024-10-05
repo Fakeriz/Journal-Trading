@@ -1,110 +1,233 @@
-import os
+import logging
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackContext, CallbackQueryHandler
+import sqlite3
+import matplotlib.pyplot as plt
 import pandas as pd
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, ConversationHandler
+from io import BytesIO
 
-# Token Telegram
-TOKEN = os.getenv('7152456723:AAFBncqooKGVI8XUb2XarTvecOEDVX_yWtU')
+# Enable logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Konfigurasi Google Sheets API
-# scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-# creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
-# client = gspread.authorize(creds)
+# Define conversation states
+PAIR, POSITION, ENTRY_PRICE, TAKE_PROFIT, STOP_LOSS, RISK_REWARD, RISK_AMOUNT, LOT_SIZE, DATE_TIME, SESSION, ANALYSIS = range(11)
 
-# ID Spreadsheet yang sudah dibuat (ambil dari URL Google Sheets)
-# SPREADSHEET_ID = 'your_spreadsheet_id'
+# Database setup
+def setup_database():
+    conn = sqlite3.connect('trading_journal.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS trades
+                 (id INTEGER PRIMARY KEY, pair TEXT, position TEXT, entry_price REAL, 
+                 take_profit REAL, stop_loss REAL, risk_reward REAL, risk_amount REAL, 
+                 lot_size REAL, date_time TEXT, session TEXT, analysis TEXT, profit_loss REAL)''')
+    conn.commit()
+    conn.close()
 
-# Step untuk conversation
-TRADE_ENTRY, EXPORT_CHOICE = range(2)
+setup_database()
 
-# Data jurnal trading akan disimpan sementara di sini
-journal_data = []
+def start(update: Update, context: CallbackContext) -> None:
+    user = update.effective_user
+    update.message.reply_text(f'Welcome to your Forex Trading Journal Bot, {user.first_name}!\n\n'
+                              f'Commands:\n'
+                              f'/newentry - Log a new trade\n'
+                              f'/history - View your trade history\n'
+                              f'/report - Get a performance report\n'
+                              f'/chart - View performance charts\n'
+                              f'/export - Export your trade data')
 
-# Fungsi untuk memulai bot
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text(
-        "Selamat datang di Trading Journal Bot.\nKetik /add untuk menambahkan jurnal trading baru."
-    )
+def new_entry(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text('Let\'s log a new trade. What\'s the trading pair?')
+    return PAIR
 
-# Fungsi untuk memulai penambahan entri trading
-def add_entry(update: Update, context: CallbackContext):
-    update.message.reply_text("Silakan masukkan data trading Anda dalam format: Pair, Entry, Exit, Profit/Loss")
-    return TRADE_ENTRY
+def pair(update: Update, context: CallbackContext) -> int:
+    context.user_data['pair'] = update.message.text
+    reply_keyboard = [['Long', 'Short']]
+    update.message.reply_text('Is this a Long or Short position?',
+                              reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+    return POSITION
 
-# Fungsi untuk menerima data trading
-def receive_entry(update: Update, context: CallbackContext):
-    user_input = update.message.text
-    try:
-        pair, entry, exit, profit_loss = user_input.split(',')
-        entry_data = {
-            'Pair': pair.strip(),
-            'Entry': float(entry.strip()),
-            'Exit': float(exit.strip()),
-            'Profit/Loss': float(profit_loss.strip())
-        }
-        journal_data.append(entry_data)
-        update.message.reply_text(f"Data trading berhasil ditambahkan: {entry_data}")
-        
-        # Tawarkan opsi export
-        reply_keyboard = [['CSV', 'Google Spreadsheet(MT)']]
-        update.message.reply_text(
-            "Data trading Anda sudah tersimpan. Bagaimana Anda ingin mengekspornya?",
-            reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
-        )
-        return EXPORT_CHOICE
+# ... (include all other conversation handlers from POSITION to ANALYSIS) ...
 
-    except ValueError:
-        update.message.reply_text("Format salah. Pastikan Anda memasukkan data dalam format: Pair, Entry, Exit, Profit/Loss")
-        return TRADE_ENTRY
+def save_trade(context: CallbackContext):
+    conn = sqlite3.connect('trading_journal.db')
+    c = conn.cursor()
+    c.execute('''INSERT INTO trades (pair, position, entry_price, take_profit, stop_loss, 
+                 risk_reward, risk_amount, lot_size, date_time, session, analysis)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+              (context.user_data['pair'], context.user_data['position'], context.user_data['entry_price'],
+               context.user_data['take_profit'], context.user_data['stop_loss'], context.user_data['risk_reward'],
+               context.user_data['risk_amount'], context.user_data['lot_size'], context.user_data['date_time'],
+               context.user_data['session'], context.user_data['analysis']))
+    conn.commit()
+    conn.close()
 
-# Fungsi untuk mengekspor data ke CSV atau Google Sheets
-def export_choice(update: Update, context: CallbackContext):
-    choice = update.message.text
-    if choice == 'CSV':
-        # Export to CSV
-        df = pd.DataFrame(journal_data)
-        csv_file = 'trading_journal.csv'
-        df.to_csv(csv_file, index=False)
-        update.message.reply_document(open(csv_file, 'rb'))
-        os.remove(csv_file)  # Hapus file CSV setelah dikirim
-    elif choice == 'Google Spreadsheet':
-        # Export to Google Sheets
-        df = pd.DataFrame(journal_data)
-        sheet = client.open_by_key(SPREADSHEET_ID).sheet1
-        sheet.clear()  # Bersihkan isi sheet
-        sheet.update([df.columns.values.tolist()] + df.values.tolist())  # Update sheet
-        update.message.reply_text(f"Data telah diekspor ke Google Spreadsheet: https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit")
-    else:
-        update.message.reply_text("Pilihan tidak valid.")
+def analysis(update: Update, context: CallbackContext) -> int:
+    context.user_data['analysis'] = update.message.text
+    save_trade(context)
     
+    summary = f"Trade logged successfully!\n\n" \
+              f"Pair: {context.user_data['pair']}\n" \
+              f"Position: {context.user_data['position']}\n" \
+              f"Entry Price: {context.user_data['entry_price']}\n" \
+              f"Take Profit: {context.user_data['take_profit']}\n" \
+              f"Stop Loss: {context.user_data['stop_loss']}\n" \
+              f"Risk/Reward: {context.user_data['risk_reward']}\n" \
+              f"Risk Amount: ${context.user_data['risk_amount']}\n" \
+              f"Lot Size: {context.user_data['lot_size']}\n" \
+              f"Date/Time: {context.user_data['date_time']}\n" \
+              f"Session: {context.user_data['session']}\n" \
+              f"Analysis: {context.user_data['analysis']}"
+    
+    update.message.reply_text(summary)
+    context.user_data.clear()
     return ConversationHandler.END
 
-# Fungsi untuk membatalkan proses
-def cancel(update: Update, context: CallbackContext):
-    update.message.reply_text("Proses dibatalkan.")
+def cancel(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text('Trade logging cancelled.', reply_markup=ReplyKeyboardRemove())
+    context.user_data.clear()
     return ConversationHandler.END
 
-# Fungsi utama untuk menjalankan bot
-def main():
-    updater = Updater(TOKEN, use_context=True)
+def history(update: Update, context: CallbackContext) -> None:
+    conn = sqlite3.connect('trading_journal.db')
+    df = pd.read_sql_query("SELECT * FROM trades ORDER BY date_time DESC LIMIT 5", conn)
+    conn.close()
+
+    if df.empty:
+        update.message.reply_text('No trades logged yet.')
+        return
+
+    history_text = "Your Recent Trade History:\n\n"
+    for _, trade in df.iterrows():
+        history_text += f"{trade['pair']} - {trade['position']} @ {trade['entry_price']}\n" \
+                        f"Date: {trade['date_time']}\n" \
+                        f"R/R: {trade['risk_reward']}, Risk: ${trade['risk_amount']}\n\n"
+    
+    update.message.reply_text(history_text)
+
+def report(update: Update, context: CallbackContext) -> None:
+    conn = sqlite3.connect('trading_journal.db')
+    df = pd.read_sql_query("SELECT * FROM trades", conn)
+    conn.close()
+
+    if df.empty:
+        update.message.reply_text('No trades logged yet.')
+        return
+
+    total_trades = len(df)
+    total_risk = df['risk_amount'].sum()
+    avg_rr = df['risk_reward'].mean()
+    
+    report_text = f"Performance Report:\n\n" \
+                  f"Total Trades: {total_trades}\n" \
+                  f"Total Risk: ${total_risk:.2f}\n" \
+                  f"Average Risk per Trade: ${total_risk / total_trades:.2f}\n" \
+                  f"Average Risk/Reward: {avg_rr:.2f}"
+    
+    update.message.reply_text(report_text)
+
+def create_bar_chart():
+    conn = sqlite3.connect('trading_journal.db')
+    df = pd.read_sql_query("SELECT pair, COUNT(*) as count FROM trades GROUP BY pair", conn)
+    conn.close()
+
+    plt.figure(figsize=(10, 6))
+    plt.bar(df['pair'], df['count'])
+    plt.title('Number of Trades per Currency Pair')
+    plt.xlabel('Currency Pair')
+    plt.ylabel('Number of Trades')
+    plt.xticks(rotation=45)
+    
+    buffer = BytesIO()
+    plt.savefig(buffer, format='png')
+    buffer.seek(0)
+    plt.close()
+    
+    return buffer
+
+def create_pie_chart():
+    conn = sqlite3.connect('trading_journal.db')
+    df = pd.read_sql_query("SELECT session, COUNT(*) as count FROM trades GROUP BY session", conn)
+    conn.close()
+
+    plt.figure(figsize=(8, 8))
+    plt.pie(df['count'], labels=df['session'], autopct='%1.1f%%')
+    plt.title('Distribution of Trades by Session')
+    
+    buffer = BytesIO()
+    plt.savefig(buffer, format='png')
+    buffer.seek(0)
+    plt.close()
+    
+    return buffer
+
+def chart(update: Update, context: CallbackContext) -> None:
+    keyboard = [
+        [InlineKeyboardButton("Bar Chart", callback_data='bar'),
+         InlineKeyboardButton("Pie Chart", callback_data='pie')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text('Choose a chart type:', reply_markup=reply_markup)
+
+def button(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    query.answer()
+
+    if query.data == 'bar':
+        chart_buffer = create_bar_chart()
+        query.message.reply_photo(photo=chart_buffer, caption="Number of Trades per Currency Pair")
+    elif query.data == 'pie':
+        chart_buffer = create_pie_chart()
+        query.message.reply_photo(photo=chart_buffer, caption="Distribution of Trades by Session")
+
+def export_data(update: Update, context: CallbackContext) -> None:
+    conn = sqlite3.connect('trading_journal.db')
+    df = pd.read_sql_query("SELECT * FROM trades", conn)
+    conn.close()
+
+    if df.empty:
+        update.message.reply_text('No trades to export.')
+        return
+
+    # Export to CSV
+    csv_buffer = BytesIO()
+    df.to_csv(csv_buffer, index=False)
+    csv_buffer.seek(0)
+    update.message.reply_document(document=csv_buffer, filename='trading_journal.csv',
+                                  caption='Your trading journal data in CSV format')
+
+    # Export to Excel
+    excel_buffer = BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+        df.to_excel(writer, sheet_name='Trades', index=False)
+    excel_buffer.seek(0)
+    update.message.reply_document(document=excel_buffer, filename='trading_journal.xlsx',
+                                  caption='Your trading journal data in Excel format')
+
+def main() -> None:
+    updater = Updater("7152456723:AAFBncqooKGVI8XUb2XarTvecOEDVX_yWtU")
+
     dp = updater.dispatcher
 
-    # Conversation handler untuk menambahkan entri dan ekspor data
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('add', add_entry)],
+        entry_points=[CommandHandler('newentry', new_entry)],
         states={
-            TRADE_ENTRY: [MessageHandler(Filters.text & ~Filters.command, receive_entry)],
-            EXPORT_CHOICE: [MessageHandler(Filters.text & ~Filters.command, export_choice)],
+            PAIR: [MessageHandler(Filters.text & ~Filters.command, pair)],
+            POSITION: [MessageHandler(Filters.regex('^(Long|Short)$'), position)],
+            # ... (include all other states)
+            ANALYSIS: [MessageHandler(Filters.text & ~Filters.command, analysis)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', cancel)],
     )
 
+    dp.add_handler(CommandHandler("start", start))
     dp.add_handler(conv_handler)
-    dp.add_handler(CommandHandler('start', start))
+    dp.add_handler(CommandHandler("history", history))
+    dp.add_handler(CommandHandler("report", report))
+    dp.add_handler(CommandHandler("chart", chart))
+    dp.add_handler(CallbackQueryHandler(button))
+    dp.add_handler(CommandHandler("export", export_data))
 
-    # Mulai bot
     updater.start_polling()
     updater.idle()
 
