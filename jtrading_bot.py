@@ -1,14 +1,56 @@
 import logging
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackContext, CallbackQueryHandler
+from telegram.ext import Application, Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackContext, CallbackQueryHandler, ContextTypes
 import sqlite3
 import matplotlib.pyplot as plt
 import pandas as pd
 from io import BytesIO
 
+TOKEN = '7152456723:AAFBncqooKGVI8XUb2XarTvecOEDVX_yWtU'
+
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Menus side panel
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a message when the command /start is issued."""
+    keyboard = [
+        [InlineKeyboardButton("Memulai bot dan menampilkan menu utama", callback_data='start')],
+        [InlineKeyboardButton("Mendaftarkan pengguna baru", callback_data='registry')],
+        [InlineKeyboardButton("Memulai proses pencatatan trade baru", callback_data='newentry')],
+        [InlineKeyboardButton("Menghasilkan laporan kerja", callback_data='report')],
+        [InlineKeyboardButton("Menampilkan opsi untuk melihat chart", callback_data='chart')],
+        [InlineKeyboardButton("Mengekspor data trading ke CSV dan Excel", callback_data='export')],
+        [InlineKeyboardButton("Memperbarui trade yang ada", callback_data='updatetrade')],
+        [InlineKeyboardButton("Menghapus trade", callback_data='deletetrade')],
+        [InlineKeyboardButton("Menampilkan riwayat trading terbaru", callback_data='history')],
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text('Please choose an option:', reply_markup=reply_markup)
+
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Parses the CallbackQuery and updates the message text."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'start':
+        await query.edit_message_text(text="Memulai bot dan menampilkan menu utama.")
+    elif query.data == 'registry':
+        await query.edit_message_text(text="Mendaftarkan pengguna baru.")
+    elif query.data == 'newentry':
+        await query.edit_message_text(text="Memulai proses pencatatan trade baru.")
+    elif query.data == 'report':
+        await query.edit_message_text(text="Menghasilkan laporan kerja.")
+    elif query.data == 'chart':
+        await query.edit_message_text(text="Menampilkan opsi untuk melihat chart.")
+    elif query.data == 'export':
+        await query.edit_message_text(text="Mengekspor data trading ke CSV dan Excel.")
+    elif query.data == 'updatetrade':
+        await query.edit_message_text(text="Memperbarui trade yang ada.")
+    elif query.data == 'history':
+        await query.edit_message_text(text="Menampilkan riwayat trading terbaru.")
 
 # Define conversation states
 PAIR, POSITION, ENTRY_PRICE, TAKE_PROFIT, STOP_LOSS, RISK_REWARD, RISK_AMOUNT, LOT_SIZE, DATE_TIME, SESSION, ANALYSIS = range(11)
@@ -255,7 +297,16 @@ def export_data(update: Update, context: CallbackContext) -> None:
                                   caption='Your trading journal data in Excel format')
 
 def main() -> None:
-    updater = Updater("7152456723:AAFBncqooKGVI8XUb2XarTvecOEDVX_yWtU")
+    updater = Updater(TOKEN)
+
+    """Run the bot."""
+    application = Application.builder().token(TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button))
+
+    # Run the bot until the user presses Ctrl-C
+    application.run_polling()
 
     dp = updater.dispatcher
 
