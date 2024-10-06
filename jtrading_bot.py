@@ -346,7 +346,7 @@ def export_data(update: Update, context: CallbackContext) -> None:
                                   caption='Your trading journal data in Excel format')
 
 # Update 1.0
-async def add_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def add_trade(update: Update, context) -> None:
     user_id = update.effective_user.id
     trade_data = update.message.text.split(',')
     if len(trade_data) != 3:
@@ -362,7 +362,7 @@ async def add_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     conn.close()
     await update.message.reply_text("Trade added successfully!")
 
-async def update_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def update_trade(update: Update, context) -> None:
     user_id = update.effective_user.id
     trade_data = update.message.text.split(',')
     if len(trade_data) != 3:
@@ -377,7 +377,7 @@ async def update_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     conn.close()
     await update.message.reply_text("Trade updated successfully!")
 
-async def delete_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def delete_trade(update: Update, context) -> None:
     user_id = update.effective_user.id
     trade_id = update.message.text.strip()
     conn = sqlite3.connect('trading_bot.db')
@@ -387,7 +387,7 @@ async def delete_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     conn.close()
     await update.message.reply_text("Trade deleted successfully!")
 
-async def view_trades(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def view_trades(update: Update, context) -> None:
     user_id = update.effective_user.id
     conn = sqlite3.connect('trading_bot.db')
     c = conn.cursor()
@@ -400,7 +400,7 @@ async def view_trades(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     else:
         await update.callback_query.edit_message_text("You have no trades recorded.")
 
-async def analyze_performance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def analyze_performance(update: Update, context) -> None:
     user_id = update.effective_user.id
     conn = sqlite3.connect('trading_bot.db')
     c = conn.cursor()
@@ -425,7 +425,7 @@ async def analyze_performance(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     await update.callback_query.edit_message_text(f"Performance Analysis:\n\n{analysis}")
 
-async def set_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def set_reminder(update: Update, context) -> None:
     reminder_data = update.message.text.split(',')
     if len(reminder_data) != 2:
         await update.message.reply_text("Invalid format. Please use: symbol,target_price")
@@ -435,7 +435,7 @@ async def set_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                                     context={'chat_id': update.effective_chat.id, 'symbol': symbol, 'target_price': float(target_price)})
     await update.message.reply_text(f"Reminder set for {symbol} at ${target_price}")
 
-async def check_price(context: ContextTypes.DEFAULT_TYPE):
+async def check_price(update: Update, context) -> None:
     job = context.job
     symbol = job.context['symbol']
     target_price = job.context['target_price']
