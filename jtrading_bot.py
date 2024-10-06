@@ -47,6 +47,52 @@ def pair(update: Update, context: CallbackContext) -> int:
                               reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
     return POSITION
 
+def position(update: Update, context: CallbackContext) -> int:
+    context.user_data['position'] = update.message.text
+    update.message.reply_text('What\'s the entry price?', reply_markup=ReplyKeyboardRemove())
+    return ENTRY_PRICE
+
+def entry_price(update: Update, context: CallbackContext) -> int:
+    context.user_data['entry_price'] = float(update.message.text)
+    update.message.reply_text('What\'s your Take Profit price?')
+    return TAKE_PROFIT
+
+def take_profit(update: Update, context: CallbackContext) -> int:
+    context.user_data['take_profit'] = float(update.message.text)
+    update.message.reply_text('What\'s your Stop Loss price?')
+    return STOP_LOSS
+
+def stop_loss(update: Update, context: CallbackContext) -> int:
+    context.user_data['stop_loss'] = float(update.message.text)
+    update.message.reply_text('What\'s the Risk/Reward ratio?')
+    return RISK_REWARD
+
+def risk_reward(update: Update, context: CallbackContext) -> int:
+    context.user_data['risk_reward'] = float(update.message.text)
+    update.message.reply_text('How much are you risking? (in USD)')
+    return RISK_AMOUNT
+
+def risk_amount(update: Update, context: CallbackContext) -> int:
+    context.user_data['risk_amount'] = float(update.message.text)
+    update.message.reply_text('What\'s the lot size?')
+    return LOT_SIZE
+
+def lot_size(update: Update, context: CallbackContext) -> int:
+    context.user_data['lot_size'] = float(update.message.text)
+    update.message.reply_text('What\'s the date and time of entry? (YYYY-MM-DD HH:MM)')
+    return DATE_TIME
+
+def date_time(update: Update, context: CallbackContext) -> int:
+    context.user_data['date_time'] = update.message.text
+    reply_keyboard = [['Asia', 'London', 'NY am', 'NY pm']]
+    update.message.reply_text('Which session is this trade in?',
+                              reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+    return SESSION
+
+def session(update: Update, context: CallbackContext) -> int:
+    context.user_data['session'] = update.message.text
+    update.message.reply_text('Please provide a brief analysis for this trade.', reply_markup=ReplyKeyboardRemove())
+    return ANALYSIS
 # ... (include all other conversation handlers from POSITION to ANALYSIS) ...
 
 def save_trade(context: CallbackContext):
@@ -204,16 +250,6 @@ def export_data(update: Update, context: CallbackContext) -> None:
     update.message.reply_document(document=excel_buffer, filename='trading_journal.xlsx',
                                   caption='Your trading journal data in Excel format')
 
-#
-def position(update, context):
-    user_choice = update.message.text
-    if user_choice == "Long":
-        update.message.reply_text("Anda memilih posisi Long. Silakan masukkan data trade.")
-    elif user_choice == "Short":
-        update.message.reply_text("Anda memilih posisi Short. Silakan masukkan data trade.")
-    else:
-        update.message.reply_text("Posisi tidak valid. Harap pilih antara Long atau Short.")
-#
 def main() -> None:
     updater = Updater("7152456723:AAFBncqooKGVI8XUb2XarTvecOEDVX_yWtU")
 
