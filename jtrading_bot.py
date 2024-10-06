@@ -245,6 +245,7 @@ def main() -> None:
             UPDATE_VALUE: [CallbackQueryHandler(update_trade_value)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
+        per_message=True  # Ensure this is set to True if you need to track each message
     )
 
     auth_handler = ConversationHandler(
