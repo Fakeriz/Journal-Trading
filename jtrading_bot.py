@@ -215,7 +215,7 @@ def position(update, context):
         update.message.reply_text("Posisi tidak valid. Harap pilih antara Long atau Short.")
 #
 def main() -> None:
-    updater = Updater("YOUR_BOT_TOKEN")
+    updater = Updater("7152456723:AAFBncqooKGVI8XUb2XarTvecOEDVX_yWtU")
 
     dp = updater.dispatcher
 
@@ -238,7 +238,7 @@ def main() -> None:
     dp.add_handler(CallbackQueryHandler(button))
     dp.add_handler(CommandHandler("export", export_data))
     dp.add_handler(MessageHandler(Filters.regex("^(Long|Short)$"), position))
-    
+
     updater.start_polling()
     updater.idle()
 
