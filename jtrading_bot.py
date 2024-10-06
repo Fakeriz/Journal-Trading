@@ -28,27 +28,10 @@ def start(update: Update, context: CallbackContext) -> None:
     reply_markup = InlineKeyboardMarkup(keyboard)
     update.message.reply_text('Please choose an option:', reply_markup=reply_markup)
 
-
 def button(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     query.answer()
-
-    if query.data == 'start':
-        query.edit_message_text(text="Memulai bot dan menampilkan menu utama.")
-    elif query.data == 'registry':
-        query.edit_message_text(text="Mendaftarkan pengguna baru.")
-    elif query.data == 'newentry':
-        query.edit_message_text(text="Memulai proses pencatatan trade baru.")
-    elif query.data == 'report':
-        query.edit_message_text(text="Menghasilkan laporan kerja.")
-    elif query.data == 'chart':
-        query.edit_message_text(text="Menampilkan opsi untuk melihat chart.")
-    elif query.data == 'export':
-        query.edit_message_text(text="Mengekspor data trading ke CSV dan Excel.")
-    elif query.data == 'updatetrade':
-        query.edit_message_text(text="Memperbarui trade yang ada.")
-    elif query.data == 'history':
-        query.edit_message_text(text="Menampilkan riwayat trading terbaru.")
+    query.edit_message_text(text=f"Selected option: {query.data}")
 
 # Define conversation states
 PAIR, POSITION, ENTRY_PRICE, TAKE_PROFIT, STOP_LOSS, RISK_REWARD, RISK_AMOUNT, LOT_SIZE, DATE_TIME, SESSION, ANALYSIS = range(11)
