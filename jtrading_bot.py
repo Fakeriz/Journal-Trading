@@ -5,9 +5,6 @@ import sqlite3
 import matplotlib.pyplot as plt
 import pandas as pd
 from io import BytesIO
-from datetime import datetime, timedelta
-import hashlib
-import os
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -15,8 +12,6 @@ logger = logging.getLogger(__name__)
 
 # Define conversation states
 PAIR, POSITION, ENTRY_PRICE, TAKE_PROFIT, STOP_LOSS, RISK_REWARD, RISK_AMOUNT, LOT_SIZE, DATE_TIME, SESSION, ANALYSIS = range(11)
-UPDATE_CHOICE, UPDATE_VALUE = range(2)
-AUTH_USERNAME, AUTH_PASSWORD = range(2)
 
 # Database setup
 def setup_database():
@@ -26,238 +21,25 @@ def setup_database():
                  (id INTEGER PRIMARY KEY, pair TEXT, position TEXT, entry_price REAL, 
                  take_profit REAL, stop_loss REAL, risk_reward REAL, risk_amount REAL, 
                  lot_size REAL, date_time TEXT, session TEXT, analysis TEXT, profit_loss REAL)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS users
-                 (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT, 
-                 telegram_id INTEGER UNIQUE)''')
     conn.commit()
     conn.close()
 
 setup_database()
 
-# User Authentication
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def register_user(update: Update, context: CallbackContext) -> int:
-    update.message.reply_text("Let's register you. Please enter a username:")
-    return AUTH_USERNAME
-
-def get_username(update: Update, context: CallbackContext) -> int:
-    context.user_data['username'] = update.message.text
-    update.message.reply_text("Now, please enter a password:")
-    return AUTH_PASSWORD
-
-def get_password(update: Update, context: CallbackContext) -> int:
-    password = hash_password(update.message.text)
-    conn = sqlite3.connect('trading_journal.db')
-    c = conn.cursor()
-    try:
-        c.execute("INSERT INTO users (username, password, telegram_id) VALUES (?, ?, ?)",
-                  (context.user_data['username'], password, update.effective_user.id))
-        conn.commit()
-        update.message.reply_text("Registration successful! You can now use the bot.")
-    except sqlite3.IntegrityError:
-        update.message.reply_text("Username already exists. Please try again with a different username.")
-    finally:
-        conn.close()
-    return ConversationHandler.END
-
-def is_authenticated(update: Update):
-    conn = sqlite3.connect('trading_journal.db')
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE telegram_id = ?", (update.effective_user.id,))
-    user = c.fetchone()
-    conn.close()
-    return user is not None
-
-def authenticate(func):
-    def wrapper(update: Update, context: CallbackContext):
-        if is_authenticated(update):
-            return func(update, context)
-        else:
-            update.message.reply_text("You need to register first. Use /register to create an account.")
-    return wrapper
-
-@authenticate
 def start(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
     update.message.reply_text(f'Welcome to your Forex Trading Journal Bot, {user.first_name}!\n\n'
                               f'Commands:\n'
                               f'/newentry - Log a new trade\n'
-                              f'/updatetrade - Update an existing trade\n'
-                              f'/deletetrade - Delete a trade\n'
                               f'/history - View your trade history\n'
                               f'/report - Get a performance report\n'
                               f'/chart - View performance charts\n'
-                              f'/export - Export your trade data\n'
-                              f'/setreminder - Set a reminder for updating trades')
+                              f'/export - Export your trade data')
 
-@authenticate
 def new_entry(update: Update, context: CallbackContext) -> int:
     update.message.reply_text('Let\'s log a new trade. What\'s the trading pair?')
     return PAIR
 
-# ... (include all other conversation handlers from pair to analysis) ...
-
-@authenticate
-def update_trade(update: Update, context: CallbackContext) -> int:
-    conn = sqlite3.connect('trading_journal.db')
-    df = pd.read_sql_query("SELECT id, pair, date_time FROM trades ORDER BY date_time DESC LIMIT 5", conn)
-    conn.close()
-
-    if df.empty:
-        update.message.reply_text('No trades to update.')
-        return ConversationHandler.END
-
-    context.user_data['trades'] = df.to_dict('records')
-    keyboard = [[InlineKeyboardButton(f"{trade['pair']} - {trade['date_time']}", callback_data=str(trade['id']))] 
-                for trade in context.user_data['trades']]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text('Select a trade to update:', reply_markup=reply_markup)
-    return UPDATE_CHOICE
-
-def update_trade_choice(update: Update, context: CallbackContext) -> int:
-    query = update.callback_query
-    query.answer()
-    trade_id = int(query.data)
-    context.user_data['current_trade'] = trade_id
-
-    keyboard = [
-        [InlineKeyboardButton("Take Profit", callback_data='take_profit'),
-         InlineKeyboardButton("Stop Loss", callback_data='stop_loss')],
-        [InlineKeyboardButton("Profit/Loss", callback_data='profit_loss')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text="What would you like to update?", reply_markup=reply_markup)
-    return UPDATE_VALUE
-
-def update_trade_value(update: Update, context: CallbackContext) -> int:
-    query = update.callback_query
-    query.answer()
-    field = query.data
-    context.user_data['update_field'] = field
-    query.edit_message_text(text=f"Please enter the new value for {field}:")
-    return ConversationHandler.END
-
-def save_update(update: Update, context: CallbackContext) -> int:
-    new_value = update.message.text
-    trade_id = context.user_data['current_trade']
-    field = context.user_data['update_field']
-
-    conn = sqlite3.connect('trading_journal.db')
-    c = conn.cursor()
-    c.execute(f"UPDATE trades SET {field} = ? WHERE id = ?", (new_value, trade_id))
-    conn.commit()
-    conn.close()
-
-    update.message.reply_text(f"Trade updated successfully. {field} set to {new_value}")
-    return ConversationHandler.END
-
-@authenticate
-def delete_trade(update: Update, context: CallbackContext) -> int:
-    conn = sqlite3.connect('trading_journal.db')
-    df = pd.read_sql_query("SELECT id, pair, date_time FROM trades ORDER BY date_time DESC LIMIT 5", conn)
-    conn.close()
-
-    if df.empty:
-        update.message.reply_text('No trades to delete.')
-        return ConversationHandler.END
-
-    context.user_data['trades'] = df.to_dict('records')
-    keyboard = [[InlineKeyboardButton(f"{trade['pair']} - {trade['date_time']}", callback_data=str(trade['id']))] 
-                for trade in context.user_data['trades']]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text('Select a trade to delete:', reply_markup=reply_markup)
-    return ConversationHandler.END
-
-def confirm_delete(update: Update, context: CallbackContext) -> int:
-    query = update.callback_query
-    query.answer()
-    trade_id = int(query.data)
-
-    conn = sqlite3.connect('trading_journal.db')
-    c = conn.cursor()
-    c.execute("DELETE FROM trades WHERE id = ?", (trade_id,))
-    conn.commit()
-    conn.close()
-
-    query.edit_message_text(text="Trade deleted successfully.")
-    return ConversationHandler.END
-
-@authenticate
-def set_reminder(update: Update, context: CallbackContext) -> None:
-    # Schedule a job to send a reminder after 24 hours
-    context.job_queue.run_once(send_reminder, timedelta(hours=24), context=update.message.chat_id)
-    update.message.reply_text('Reminder set! I\'ll remind you to update your trades in 24 hours.')
-
-def send_reminder(context: CallbackContext) -> None:
-    job = context.job
-    context.bot.send_message(job.context, text='Don\'t forget to update your trades!')
-
-@authenticate
-def advanced_report(update: Update, context: CallbackContext) -> None:
-    conn = sqlite3.connect('trading_journal.db')
-    df = pd.read_sql_query("SELECT * FROM trades", conn)
-    conn.close()
-
-    if df.empty:
-        update.message.reply_text('No trades logged yet.')
-        return
-
-    total_trades = len(df)
-    winning_trades = df[df['profit_loss'] > 0]
-    losing_trades = df[df['profit_loss'] < 0]
-    win_rate = len(winning_trades) / total_trades * 100
-    average_win = winning_trades['profit_loss'].mean() if not winning_trades.empty else 0
-    average_loss = abs(losing_trades['profit_loss'].mean()) if not losing_trades.empty else 0
-    profit_factor = abs(winning_trades['profit_loss'].sum() / losing_trades['profit_loss'].sum()) if not losing_trades.empty else float('inf')
-    
-    report_text = f"Advanced Performance Report:\n\n" \
-                  f"Total Trades: {total_trades}\n" \
-                  f"Win Rate: {win_rate:.2f}%\n" \
-                  f"Average Win: ${average_win:.2f}\n" \
-                  f"Average Loss: ${average_loss:.2f}\n" \
-                  f"Profit Factor: {profit_factor:.2f}\n" \
-                  f"Total Profit/Loss: ${df['profit_loss'].sum():.2f}"
-    
-    update.message.reply_text(report_text)
-
-def main() -> None:
-    updater = Updater("7152456723:AAFBncqooKGVI8XUb2XarTvecOEDVX_yWtU")
-
-    dp = updater.dispatcher
-
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('newentry', new_entry)],
-        states={
-            PAIR: [MessageHandler(Filters.text & ~Filters.command, pair)],
-            POSITION: [MessageHandler(Filters.regex('^(Long|Short)$'), position)],
-            # ... (include all other states)
-            ANALYSIS: [MessageHandler(Filters.text & ~Filters.command, analysis)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)],
-    )
-
-    update_handler = ConversationHandler(
-        entry_points=[CommandHandler('updatetrade', update_trade)],
-        states={
-            UPDATE_CHOICE: [CallbackQueryHandler(update_trade_choice)],
-            UPDATE_VALUE: [CallbackQueryHandler(update_trade_value)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)],
-        per_message=True  # Ensure this is set to True if you need to track each message
-    )
-
-    auth_handler = ConversationHandler(
-        entry_points=[CommandHandler('register', register_user)],
-        states={
-            AUTH_USERNAME: [MessageHandler(Filters.text & ~Filters.command, get_username)],
-            AUTH_PASSWORD: [MessageHandler(Filters.text & ~Filters.command, get_password)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)],
-    )
-
-#
 def pair(update: Update, context: CallbackContext) -> int:
     context.user_data['pair'] = update.message.text
     reply_keyboard = [['Long', 'Short']]
@@ -265,14 +47,7 @@ def pair(update: Update, context: CallbackContext) -> int:
                               reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
     return POSITION
 
-def position(update, context):
-    user_choice = update.message.text
-    if user_choice == "Long":
-        update.message.reply_text("Anda memilih posisi Long. Silakan masukkan data trade.")
-    elif user_choice == "Short":
-        update.message.reply_text("Anda memilih posisi Short. Silakan masukkan data trade.")
-    else:
-        update.message.reply_text("Posisi tidak valid. Harap pilih antara Long atau Short.")
+# ... (include all other conversation handlers from POSITION to ANALYSIS) ...
 
 def save_trade(context: CallbackContext):
     conn = sqlite3.connect('trading_journal.db')
@@ -286,6 +61,7 @@ def save_trade(context: CallbackContext):
                context.user_data['session'], context.user_data['analysis']))
     conn.commit()
     conn.close()
+
 def analysis(update: Update, context: CallbackContext) -> int:
     context.user_data['analysis'] = update.message.text
     save_trade(context)
@@ -306,27 +82,163 @@ def analysis(update: Update, context: CallbackContext) -> int:
     update.message.reply_text(summary)
     context.user_data.clear()
     return ConversationHandler.END
+
 def cancel(update: Update, context: CallbackContext) -> int:
     update.message.reply_text('Trade logging cancelled.', reply_markup=ReplyKeyboardRemove())
     context.user_data.clear()
     return ConversationHandler.END
 
-    dp.add_handler(MessageHandler(Filters.regex("^(Long|Short)$"), position))
+def history(update: Update, context: CallbackContext) -> None:
+    conn = sqlite3.connect('trading_journal.db')
+    df = pd.read_sql_query("SELECT * FROM trades ORDER BY date_time DESC LIMIT 5", conn)
+    conn.close()
+
+    if df.empty:
+        update.message.reply_text('No trades logged yet.')
+        return
+
+    history_text = "Your Recent Trade History:\n\n"
+    for _, trade in df.iterrows():
+        history_text += f"{trade['pair']} - {trade['position']} @ {trade['entry_price']}\n" \
+                        f"Date: {trade['date_time']}\n" \
+                        f"R/R: {trade['risk_reward']}, Risk: ${trade['risk_amount']}\n\n"
+    
+    update.message.reply_text(history_text)
+
+def report(update: Update, context: CallbackContext) -> None:
+    conn = sqlite3.connect('trading_journal.db')
+    df = pd.read_sql_query("SELECT * FROM trades", conn)
+    conn.close()
+
+    if df.empty:
+        update.message.reply_text('No trades logged yet.')
+        return
+
+    total_trades = len(df)
+    total_risk = df['risk_amount'].sum()
+    avg_rr = df['risk_reward'].mean()
+    
+    report_text = f"Performance Report:\n\n" \
+                  f"Total Trades: {total_trades}\n" \
+                  f"Total Risk: ${total_risk:.2f}\n" \
+                  f"Average Risk per Trade: ${total_risk / total_trades:.2f}\n" \
+                  f"Average Risk/Reward: {avg_rr:.2f}"
+    
+    update.message.reply_text(report_text)
+
+def create_bar_chart():
+    conn = sqlite3.connect('trading_journal.db')
+    df = pd.read_sql_query("SELECT pair, COUNT(*) as count FROM trades GROUP BY pair", conn)
+    conn.close()
+
+    plt.figure(figsize=(10, 6))
+    plt.bar(df['pair'], df['count'])
+    plt.title('Number of Trades per Currency Pair')
+    plt.xlabel('Currency Pair')
+    plt.ylabel('Number of Trades')
+    plt.xticks(rotation=45)
+    
+    buffer = BytesIO()
+    plt.savefig(buffer, format='png')
+    buffer.seek(0)
+    plt.close()
+    
+    return buffer
+
+def create_pie_chart():
+    conn = sqlite3.connect('trading_journal.db')
+    df = pd.read_sql_query("SELECT session, COUNT(*) as count FROM trades GROUP BY session", conn)
+    conn.close()
+
+    plt.figure(figsize=(8, 8))
+    plt.pie(df['count'], labels=df['session'], autopct='%1.1f%%')
+    plt.title('Distribution of Trades by Session')
+    
+    buffer = BytesIO()
+    plt.savefig(buffer, format='png')
+    buffer.seek(0)
+    plt.close()
+    
+    return buffer
+
+def chart(update: Update, context: CallbackContext) -> None:
+    keyboard = [
+        [InlineKeyboardButton("Bar Chart", callback_data='bar'),
+         InlineKeyboardButton("Pie Chart", callback_data='pie')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text('Choose a chart type:', reply_markup=reply_markup)
+
+def button(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    query.answer()
+
+    if query.data == 'bar':
+        chart_buffer = create_bar_chart()
+        query.message.reply_photo(photo=chart_buffer, caption="Number of Trades per Currency Pair")
+    elif query.data == 'pie':
+        chart_buffer = create_pie_chart()
+        query.message.reply_photo(photo=chart_buffer, caption="Distribution of Trades by Session")
+
+def export_data(update: Update, context: CallbackContext) -> None:
+    conn = sqlite3.connect('trading_journal.db')
+    df = pd.read_sql_query("SELECT * FROM trades", conn)
+    conn.close()
+
+    if df.empty:
+        update.message.reply_text('No trades to export.')
+        return
+
+    # Export to CSV
+    csv_buffer = BytesIO()
+    df.to_csv(csv_buffer, index=False)
+    csv_buffer.seek(0)
+    update.message.reply_document(document=csv_buffer, filename='trading_journal.csv',
+                                  caption='Your trading journal data in CSV format')
+
+    # Export to Excel
+    excel_buffer = BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+        df.to_excel(writer, sheet_name='Trades', index=False)
+    excel_buffer.seek(0)
+    update.message.reply_document(document=excel_buffer, filename='trading_journal.xlsx',
+                                  caption='Your trading journal data in Excel format')
+
 #
+def position(update, context):
+    user_choice = update.message.text
+    if user_choice == "Long":
+        update.message.reply_text("Anda memilih posisi Long. Silakan masukkan data trade.")
+    elif user_choice == "Short":
+        update.message.reply_text("Anda memilih posisi Short. Silakan masukkan data trade.")
+    else:
+        update.message.reply_text("Posisi tidak valid. Harap pilih antara Long atau Short.")
+#
+def main() -> None:
+    updater = Updater("YOUR_BOT_TOKEN")
+
+    dp = updater.dispatcher
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('newentry', new_entry)],
+        states={
+            PAIR: [MessageHandler(Filters.text & ~Filters.command, pair)],
+            POSITION: [MessageHandler(Filters.regex('^(Long|Short)$'), position)],
+            # ... (include all other states)
+            ANALYSIS: [MessageHandler(Filters.text & ~Filters.command, analysis)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
 
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(conv_handler)
-    dp.add_handler(update_handler)
-    dp.add_handler(auth_handler)
     dp.add_handler(CommandHandler("history", history))
     dp.add_handler(CommandHandler("report", report))
-    dp.add_handler(CommandHandler("advancedreport", advanced_report))
     dp.add_handler(CommandHandler("chart", chart))
-    dp.add_handler(CommandHandler("export", export_data))
-    dp.add_handler(CommandHandler("deletetrade", delete_trade))
-    dp.add_handler(CommandHandler("setreminder", set_reminder))
     dp.add_handler(CallbackQueryHandler(button))
-
+    dp.add_handler(CommandHandler("export", export_data))
+    dp.add_handler(MessageHandler(Filters.regex("^(Long|Short)$"), position))
+    
     updater.start_polling()
     updater.idle()
 
