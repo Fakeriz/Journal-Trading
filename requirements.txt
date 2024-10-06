@@ -3,3 +3,4 @@ matplotlib
 pandas
 openpyxl
 xlsxwriter
+sqlite3

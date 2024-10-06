@@ -1,9 +1,12 @@
 import logging
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackContext, CallbackQueryHandler, ContextTypes
+from datetime import datetime
 import sqlite3
 import matplotlib.pyplot as plt
 import pandas as pd
+import json
+import asyncio
 from io import BytesIO
 
 TOKEN = '7152456723:AAFBncqooKGVI8XUb2XarTvecOEDVX_yWtU'
@@ -13,7 +16,9 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Menus side panel
-def start(update: Update, context: CallbackContext) -> None:
+async def start(update: Update, context) -> None:
+    if not await authenticate(update, context):
+        return
     keyboard = [
         [InlineKeyboardButton("Memulai bot dan menampilkan menu utama", callback_data='start')],
         [InlineKeyboardButton("Mendaftarkan pengguna baru", callback_data='registry')],
@@ -24,17 +29,80 @@ def start(update: Update, context: CallbackContext) -> None:
         [InlineKeyboardButton("Memperbarui trade yang ada", callback_data='updatetrade')],
         [InlineKeyboardButton("Menghapus trade", callback_data='deletetrade')],
         [InlineKeyboardButton("Menampilkan riwayat trading terbaru", callback_data='history')],
+        [InlineKeyboardButton("Add new trade", callback_data='new_trade')],
+        [InlineKeyboardButton("Update trade", callback_data='update_trade')],
+        [InlineKeyboardButton("Delete trade", callback_data='delete_trade')],
+        [InlineKeyboardButton("View trades", callback_data='view_trades')],
+        [InlineKeyboardButton("Analyze performance", callback_data='analyze')],
+        [InlineKeyboardButton("Set reminder", callback_data='set_reminder')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text('Please choose an option:', reply_markup=reply_markup)
+    await update.message.reply_text('Welcome to the Trading Bot! Please choose an option:', reply_markup=reply_markup)
 
-def button(update: Update, context: CallbackContext) -> None:
+async def button(update: Update, context) -> None:
     query = update.callback_query
-    query.answer()
-    query.edit_message_text(text=f"Selected option: {query.data}")
+    await query.answer()
+    
+    if query.data == 'new_trade':
+        await query.edit_message_text(text="Please enter trade details in the format: symbol,entry_price,quantity")
+        context.user_data['next_handler'] = 'add_trade'
+    elif query.data == 'update_trade':
+        await query.edit_message_text(text="Please enter trade ID and updated details: trade_id,exit_price,exit_date")
+        context.user_data['next_handler'] = 'update_trade'
+    elif query.data == 'delete_trade':
+        await query.edit_message_text(text="Please enter the trade ID to delete")
+        context.user_data['next_handler'] = 'delete_trade'
+    elif query.data == 'view_trades':
+        await view_trades(update, context)
+    elif query.data == 'analyze':
+        await analyze_performance(update, context)
+    elif query.data == 'set_reminder':
+        await query.edit_message_text(text="Please enter reminder details: symbol,target_price")
+        context.user_data['next_handler'] = 'set_reminder'
+
+async def handle_message(update: Update, context) -> None:
+    if not await authenticate(update, context):
+        return
+    next_handler = context.user_data.get('next_handler')
+    if next_handler == 'add_trade':
+        await add_trade(update, context)
+    elif next_handler == 'update_trade':
+        await update_trade(update, context)
+    elif next_handler == 'delete_trade':
+        await delete_trade(update, context)
+    elif next_handler == 'set_reminder':
+        await set_reminder(update, context)
+    else:
+        await update.message.reply_text("I'm not sure what you want to do. Please use the menu options.")
+
+# ... (other functions like add_trade, update_trade, delete_trade, view_trades, analyze_performance remain the same)
 
 # Define conversation states
 PAIR, POSITION, ENTRY_PRICE, TAKE_PROFIT, STOP_LOSS, RISK_REWARD, RISK_AMOUNT, LOT_SIZE, DATE_TIME, SESSION, ANALYSIS = range(11)
+
+# User authentication
+async def authenticate(update: Update, context) -> bool:
+    user_id = update.effective_user.id
+    conn = sqlite3.connect('trading_bot.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    user = c.fetchone()
+    conn.close()
+    if user:
+        return True
+    else:
+        await update.message.reply_text("Please register first using /register command.")
+        return False
+
+async def register(update: Update, context) -> None:
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+    conn = sqlite3.connect('trading_bot.db')
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text("Registration successful!")
 
 # Database setup
 def setup_database():
@@ -277,6 +345,110 @@ def export_data(update: Update, context: CallbackContext) -> None:
     update.message.reply_document(document=excel_buffer, filename='trading_journal.xlsx',
                                   caption='Your trading journal data in Excel format')
 
+# Update 1.0
+async def add_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    trade_data = update.message.text.split(',')
+    if len(trade_data) != 3:
+        await update.message.reply_text("Invalid format. Please use: symbol,entry_price,quantity")
+        return
+    symbol, entry_price, quantity = trade_data
+    entry_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect('trading_bot.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO trades (user_id, symbol, entry_price, quantity, entry_date) VALUES (?, ?, ?, ?, ?)",
+              (user_id, symbol, float(entry_price), float(quantity), entry_date))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text("Trade added successfully!")
+
+async def update_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    trade_data = update.message.text.split(',')
+    if len(trade_data) != 3:
+        await update.message.reply_text("Invalid format. Please use: trade_id,exit_price,exit_date")
+        return
+    trade_id, exit_price, exit_date = trade_data
+    conn = sqlite3.connect('trading_bot.db')
+    c = conn.cursor()
+    c.execute("UPDATE trades SET exit_price = ?, exit_date = ? WHERE id = ? AND user_id = ?",
+              (float(exit_price), exit_date, int(trade_id), user_id))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text("Trade updated successfully!")
+
+async def delete_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    trade_id = update.message.text.strip()
+    conn = sqlite3.connect('trading_bot.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM trades WHERE id = ? AND user_id = ?", (int(trade_id), user_id))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text("Trade deleted successfully!")
+
+async def view_trades(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    conn = sqlite3.connect('trading_bot.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM trades WHERE user_id = ?", (user_id,))
+    trades = c.fetchall()
+    conn.close()
+    if trades:
+        trade_list = "\n".join([f"ID: {trade[0]}, Symbol: {trade[2]}, Entry: {trade[3]}, Exit: {trade[4]}" for trade in trades])
+        await update.callback_query.edit_message_text(f"Your trades:\n{trade_list}")
+    else:
+        await update.callback_query.edit_message_text("You have no trades recorded.")
+
+async def analyze_performance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    conn = sqlite3.connect('trading_bot.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM trades WHERE user_id = ? AND exit_price IS NOT NULL", (user_id,))
+    closed_trades = c.fetchall()
+    conn.close()
+    
+    if not closed_trades:
+        await update.callback_query.edit_message_text("No closed trades to analyze.")
+        return
+    
+    total_profit = sum((trade[4] - trade[3]) * trade[5] for trade in closed_trades)
+    win_count = sum(1 for trade in closed_trades if trade[4] > trade[3])
+    loss_count = len(closed_trades) - win_count
+    win_rate = win_count / len(closed_trades) * 100
+    
+    analysis = f"Total Profit: ${total_profit:.2f}\n"
+    analysis += f"Win Rate: {win_rate:.2f}%\n"
+    analysis += f"Total Trades: {len(closed_trades)}\n"
+    analysis += f"Wins: {win_count}\n"
+    analysis += f"Losses: {loss_count}"
+    
+    await update.callback_query.edit_message_text(f"Performance Analysis:\n\n{analysis}")
+
+async def set_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    reminder_data = update.message.text.split(',')
+    if len(reminder_data) != 2:
+        await update.message.reply_text("Invalid format. Please use: symbol,target_price")
+        return
+    symbol, target_price = reminder_data
+    context.job_queue.run_repeating(check_price, interval=300, first=10,
+                                    context={'chat_id': update.effective_chat.id, 'symbol': symbol, 'target_price': float(target_price)})
+    await update.message.reply_text(f"Reminder set for {symbol} at ${target_price}")
+
+async def check_price(context: ContextTypes.DEFAULT_TYPE):
+    job = context.job
+    symbol = job.context['symbol']
+    target_price = job.context['target_price']
+    chat_id = job.context['chat_id']
+    
+    # Here you would typically fetch the current price from an API
+    current_price = 100  # Placeholder value
+    
+    if current_price >= target_price:
+        await context.bot.send_message(chat_id=chat_id, text=f"Alert! {symbol} has reached ${current_price}")
+        job.schedule_removal()
+
+#
 def main() -> None:
     updater = Updater(TOKEN)
 
@@ -308,6 +480,8 @@ def main() -> None:
     dp.add_handler(CallbackQueryHandler(button))
     dp.add_handler(CommandHandler("export", export_data))
     dp.add_handler(MessageHandler(Filters.regex("^(Long|Short)$"), position))
+    dp.add_handler(CommandHandler("register", register))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
 
     updater.start_polling()
     updater.idle()
