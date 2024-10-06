@@ -37,13 +37,17 @@ def start(update: Update, context: CallbackContext) -> None:
                               f'/export - Export your trade data')
 
 def new_entry(update: Update, context: CallbackContext) -> int:
-    update.message.reply_text('Let\'s log a new trade. What\'s the trading pair?')
+    update.message.reply_text(f'Let\'s log a new trade. What\'s the trading pair?'
+                              f'XAUUSD\n'
+                              f'BTCUSD\n'
+                              f'USOIL\n'
+                              f'EURUSD, etc\n')
     return PAIR
 
 def pair(update: Update, context: CallbackContext) -> int:
     context.user_data['pair'] = update.message.text
     reply_keyboard = [['Long', 'Short']]
-    update.message.reply_text('Is this a Long or Short position?',
+    update.message.reply_text('Is this a Long (Buy) or Short (Sell) position?',
                               reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
     return POSITION
 
@@ -68,12 +72,12 @@ def stop_loss(update: Update, context: CallbackContext) -> int:
     return RISK_REWARD
 
 def risk_reward(update: Update, context: CallbackContext) -> int:
-    context.user_data['risk_reward'] = float(update.message.text)
+    context.user_data['risk_reward'] = update.message.text
     update.message.reply_text('How much are you risking? (in USD)')
     return RISK_AMOUNT
 
 def risk_amount(update: Update, context: CallbackContext) -> int:
-    context.user_data['risk_amount'] = float(update.message.text)
+    context.user_data['risk_amount'] = update.message.text
     update.message.reply_text('What\'s the lot size?')
     return LOT_SIZE
 
