@@ -260,7 +260,14 @@ def main() -> None:
         states={
             PAIR: [MessageHandler(Filters.text & ~Filters.command, pair)],
             POSITION: [MessageHandler(Filters.regex('^(Long|Short)$'), position)],
-            # ... (include all other states)
+            ENTRY_PRICE: [MessageHandler(Filters.text & ~Filters.command, entry_price)],
+            TAKE_PROFIT: [MessageHandler(Filters.text & ~Filters.command, take_profit)],
+            STOP_LOSS: [MessageHandler(Filters.text & ~Filters.command, stop_loss)],
+            RISK_REWARD: [MessageHandler(Filters.text & ~Filters.command, risk_reward)],
+            RISK_AMOUNT: [MessageHandler(Filters.text & ~Filters.command, risk_amount)],
+            LOT_SIZE: [MessageHandler(Filters.text & ~Filters.command, lot_size)],
+            DATE_TIME: [MessageHandler(Filters.text & ~Filters.command, date_time)],
+            SESSION: [MessageHandler(Filters.regex('^(Asia|London|NY am|NY pm)$'), session)],
             ANALYSIS: [MessageHandler(Filters.text & ~Filters.command, analysis)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
