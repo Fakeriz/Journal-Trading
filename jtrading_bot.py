@@ -1,6 +1,6 @@
 import logging
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackContext, CallbackQueryHandler, ContextTypes
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackContext, CallbackQueryHandler, ContextTypes
 import sqlite3
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -13,8 +13,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Menus side panel
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /start is issued."""
+def start(update: Update, context: CallbackContext) -> None:
     keyboard = [
         [InlineKeyboardButton("Memulai bot dan menampilkan menu utama", callback_data='start')],
         [InlineKeyboardButton("Mendaftarkan pengguna baru", callback_data='registry')],
@@ -26,31 +25,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         [InlineKeyboardButton("Menghapus trade", callback_data='deletetrade')],
         [InlineKeyboardButton("Menampilkan riwayat trading terbaru", callback_data='history')],
     ]
-
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('Please choose an option:', reply_markup=reply_markup)
+    update.message.reply_text('Please choose an option:', reply_markup=reply_markup)
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Parses the CallbackQuery and updates the message text."""
+
+def button(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
-    await query.answer()
+    query.answer()
 
     if query.data == 'start':
-        await query.edit_message_text(text="Memulai bot dan menampilkan menu utama.")
+        query.edit_message_text(text="Memulai bot dan menampilkan menu utama.")
     elif query.data == 'registry':
-        await query.edit_message_text(text="Mendaftarkan pengguna baru.")
+        query.edit_message_text(text="Mendaftarkan pengguna baru.")
     elif query.data == 'newentry':
-        await query.edit_message_text(text="Memulai proses pencatatan trade baru.")
+        query.edit_message_text(text="Memulai proses pencatatan trade baru.")
     elif query.data == 'report':
-        await query.edit_message_text(text="Menghasilkan laporan kerja.")
+        query.edit_message_text(text="Menghasilkan laporan kerja.")
     elif query.data == 'chart':
-        await query.edit_message_text(text="Menampilkan opsi untuk melihat chart.")
+        query.edit_message_text(text="Menampilkan opsi untuk melihat chart.")
     elif query.data == 'export':
-        await query.edit_message_text(text="Mengekspor data trading ke CSV dan Excel.")
+        query.edit_message_text(text="Mengekspor data trading ke CSV dan Excel.")
     elif query.data == 'updatetrade':
-        await query.edit_message_text(text="Memperbarui trade yang ada.")
+        query.edit_message_text(text="Memperbarui trade yang ada.")
     elif query.data == 'history':
-        await query.edit_message_text(text="Menampilkan riwayat trading terbaru.")
+        query.edit_message_text(text="Menampilkan riwayat trading terbaru.")
 
 # Define conversation states
 PAIR, POSITION, ENTRY_PRICE, TAKE_PROFIT, STOP_LOSS, RISK_REWARD, RISK_AMOUNT, LOT_SIZE, DATE_TIME, SESSION, ANALYSIS = range(11)
@@ -79,7 +77,7 @@ def start(update: Update, context: CallbackContext) -> None:
                               f'/export - Export your trade data')
 
 def new_entry(update: Update, context: CallbackContext) -> int:
-    update.message.reply_text(f'Let\'s log a new trade. What\'s the trading pair?'
+    update.message.reply_text(f'Let\'s log a new trade. What\'s the trading pair?\n\n'
                               f'XAUUSD\n'
                               f'BTCUSD\n'
                               f'USOIL\n'
@@ -298,15 +296,6 @@ def export_data(update: Update, context: CallbackContext) -> None:
 
 def main() -> None:
     updater = Updater(TOKEN)
-
-    """Run the bot."""
-    application = Application.builder().token(TOKEN).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button))
-
-    # Run the bot until the user presses Ctrl-C
-    application.run_polling()
 
     dp = updater.dispatcher
 
